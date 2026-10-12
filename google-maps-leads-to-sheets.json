@@ -1,0 +1,250 @@
+{
+  "name": "Google Maps Leads to Google Sheets (Places API)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "595ffa66-f3ce-4eb6-b819-6a44af621a37",
+      "name": "Run lead search",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "48084c93-2315-4674-8c56-13c5c855c39a",
+              "name": "searchQuery",
+              "value": "dentists in Austin, TX",
+              "type": "string"
+            },
+            {
+              "id": "e397f728-f35f-4688-9632-d4e419849f9c",
+              "name": "maxPages",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "7f232d1a-c07b-4419-a071-366954d06021",
+              "name": "placesBaseUrl",
+              "value": "https://places.googleapis.com/v1",
+              "type": "string"
+            },
+            {
+              "id": "c6efe6cc-0215-4f20-bd6d-56c8324b1431",
+              "name": "googleSheetUrl",
+              "value": "PASTE_YOUR_GOOGLE_SHEET_URL_HERE",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "94fb1217-24a3-4a8b-820d-3ceeb7ca699b",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.placesBaseUrl }}/places:searchText",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.googleMapsUri,places.businessStatus,nextPageToken"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ textQuery: $json.searchQuery, pageSize: 20 }) }}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": "={{ Math.min(3, Math.max(1, Number($('Settings').first().json.maxPages) || 1)) }}",
+              "requestInterval": 2000
+            }
+          }
+        }
+      },
+      "id": "0e31cee8-1cd9-42ce-a6a6-adb5162c6e17",
+      "name": "Search Google Places",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PLACES_CRED_ID",
+          "name": "Google Places API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Flattens all result pages into one item per business, removes duplicates\n// and closed businesses, and normalizes the fields we use later.\nconst seen = new Set();\nconst leads = [];\nfor (const page of $input.all()) {\n  for (const p of (page.json.places || [])) {\n    if (!p.id || seen.has(p.id)) continue;\n    if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') continue;\n    seen.add(p.id);\n    let website = (p.websiteUri || '').trim();\n    if (website && !/^https?:\\/\\//i.test(website)) website = 'http://' + website;\n    leads.push({ json: {\n      place_id: p.id,\n      business_name: p.displayName?.text || '',\n      address: p.formattedAddress || '',\n      phone: p.nationalPhoneNumber || p.internationalPhoneNumber || '',\n      website,\n      rating: p.rating ?? '',\n      reviews: p.userRatingCount ?? 0,\n      maps_url: p.googleMapsUri || '',\n      search_query: $('Settings').first().json.searchQuery,\n      found_at: new Date().toISOString().slice(0, 10),\n    }});\n  }\n}\nif (!leads.length) {\n  throw new Error('Google Places returned no businesses for this search. Try a broader query, e.g. \"dentists in Austin, TX\".');\n}\nreturn leads;"
+      },
+      "id": "29d839d6-ef2d-4cda-b4c7-8033e43a0237",
+      "name": "Extract leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.googleSheetUrl }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "place_id"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "93e44592-f8a0-45bc-8f3a-c4593e21f144",
+      "name": "Save to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "disabled": false
+    },
+    {
+      "parameters": {
+        "content": "## Google Maps Leads to Google Sheets (free)\nPulls local businesses from the **official Google Places API (New)** into a Google Sheet. No scraping.\n\n1. Create a Places API key in Google Cloud and add it as a **Header Auth** credential: name `X-Goog-Api-Key`, value = your key.\n2. Make a Google Sheet with a tab named **Leads** and a header row (see README). Paste its URL into **Settings**.\n3. Set your search in **Settings** (e.g. \"plumbers in Denver, CO\") and run.\n\nRe-running the same search updates rows (matched on `place_id`) instead of duplicating them.",
+        "height": 340,
+        "width": 440,
+        "color": 4
+      },
+      "id": "ccfecb7a-2f7b-4dd4-85fa-1cb0b7da78a6",
+      "name": "Read me first",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Pagination\nThe field mask **must include `nextPageToken`** or you only get page 1. Text Search returns max 20 per page and 60 in total, so `maxPages` is capped at 3.",
+        "height": 200,
+        "width": 340,
+        "color": 6
+      },
+      "id": "f177d6d8-e7ba-4404-b472-c58951bd58ae",
+      "name": "Pagination note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -20
+      ]
+    }
+  ],
+  "connections": {
+    "Run lead search": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Search Google Places",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Google Places": {
+      "main": [
+        [
+          {
+            "node": "Extract leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract leads": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

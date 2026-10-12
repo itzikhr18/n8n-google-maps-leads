@@ -1,0 +1,5 @@
+place_id,business_name,address,phone,website,rating,reviews,maps_url,search_query,found_at
+p1,Bright Smile Dental,"1 Main St, Austin, TX",(512) 555-0101,https://brightsmile.example,4.8,210,https://maps.google.com/?cid=1,"dentists in Austin, TX",2026-10-12
+p2,Old Town Dentistry,"2 Oak Ave, Austin, TX",(512) 555-0102,http://oldtowndentistry.example,4.1,37,https://maps.google.com/?cid=2,"dentists in Austin, TX",2026-10-12
+p3,Lakeside Family Dental,"3 Lake Rd, Austin, TX",(512) 555-0103,,4.6,12,https://maps.google.com/?cid=3,"dentists in Austin, TX",2026-10-12
+p5,Broken Site Orthodontics,"5 Elm St, Austin, TX",+1 512-555-0105,https://brokensite.example,3.9,8,https://maps.google.com/?cid=5,"dentists in Austin, TX",2026-10-12
